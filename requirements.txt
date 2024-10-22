@@ -1,0 +1,7 @@
+absl_py==2.1.0
+ipython==8.12.3
+matplotlib==3.9.2
+numpy==2.1.2
+PySC2==4.0.0
+PyYAML==6.0.1
+torch==2.3.1

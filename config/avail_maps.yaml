@@ -1,0 +1,37 @@
+MoveToBeacon:
+  strategies:
+    - collect
+  alliances:
+    - neutral
+CollectMineralShards:
+  strategies:
+    - collect
+  alliances:
+    - neutral
+FindAndDefeatZerglings: 
+  strategies:
+    - combat
+  alliances:
+    - enemy
+DefeatRoaches:
+  strategies:
+    - combat
+  alliances:
+    - enemy
+DefeatZerglingsAndBanelings:
+  strategies:
+    - combat
+  alliances:
+    - enemy
+CollectMineralsAndGas:
+  strategies:
+    - collect
+    - production
+  alliances:
+    - neutral
+BuildMarines:
+  strategies:
+    - collect
+    - production
+  alliances:
+    - neutral

@@ -1,0 +1,72 @@
+# --- ENV PARAMS ---
+env:
+    map_name: "DefeatRoaches"
+    step_mul: 32
+    game_steps_per_episode: null
+    visualize: False
+    random_seed: 42
+    realtime: False
+    # save_replay_episodes: 100
+    # replay_dir: 'data/replays/'
+    # replay_prefix: *map_name
+
+agent_interface_format:
+    minimap: 16
+    screen_size: 64
+    use_feature_units: True
+    use_raw_units: False
+
+# --- AGENT PARAMS ---
+agent:
+    grid_resize_factor: 4
+    batch_size: 16
+    features_index: 
+        - 1  # visibility_map
+        - 4  # player_id
+        - 5  # player_relative
+        - 6  # unit_type
+        - 7  # selected
+        - 8  # unit_hit_points
+        - 14 # unit_density
+
+# TRAINING PARAMS
+## --- RL PARAMS ---
+### --- DDQN PARAMS ---
+ddqn:
+    learning_rate: 1.0e-4
+    momentum: 0.9
+    gamma: 0.99
+    accumulation_steps: 2
+    min_epsilon: 1.0e-3
+    epsilon: 0.8
+    epsilon_discount_rate: 1.0e-3
+    discount_factor: 0.99
+
+### --- DQN PARAMS ---
+dqn:
+    gamma: 0.99
+    eps_start: 0.8
+    eps_end: 0.05
+    eps_decay: 1000
+    tau: 0.005
+    learning_rate: 1.0e-4
+    amsgrad: True
+    replay_capacity: 300
+
+# --- RUN PARAMS ---
+run:
+    run: 11_eval_3
+    episodes: 500
+    eval_window: 100
+    num_evals: 5
+    tries: 10
+    steps_to_change_strategy: 5
+    steps_to_train_macro: 4
+    max_actions_to_stop: 100
+    eval_mode: True
+    use_pretrained_model: False  # If set to True, `eval_mode` must be set to False
+    freeze_layers: False         # Only valid when `use_pretrained_model is True
+    load_from_run: 11.3            # Only valid when `eval_mode` or `use_pretrained_model is True. Use to load an agent from another run
+    model_save_path: 'data/models/'
+    results_train_save_path: 'data/results/training/'
+    results_eval_save_path: 'data/results/evaluation/'
