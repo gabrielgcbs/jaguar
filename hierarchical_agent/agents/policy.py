@@ -12,20 +12,26 @@ from models import DQNModel, DDQNModel
 from collections import namedtuple, deque
 
 try:
-    with open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'config', 'params.yaml')), "r") as fp:
+    with open(
+        os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../..", "config", "params.yaml")
+        ),
+        "r",
+    ) as fp:
         params = yaml.safe_load(fp)
 except FileNotFoundError as e:
     raise Exception(e)
 
-dqn_params = params['dqn']
-ddqn_params = params['ddqn']
+dqn_params = params["dqn"]
+ddqn_params = params["ddqn"]
 
 # if GPU is to be used
 device = torch.device(
-    "cuda" if torch.cuda.is_available() else
-    "mps" if torch.backends.mps.is_available() else
-    "cpu"
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps" if torch.backends.mps.is_available() else "cpu"
 )
+
 
 def make_dir(path) -> None:
     """
@@ -40,7 +46,11 @@ def make_dir(path) -> None:
     if not os.path.isdir(path):
         os.mkdir(path)
 
-Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'over'))
+
+Transition = namedtuple(
+    "Transition", ("state", "action", "next_state", "reward", "over")
+)
+
 
 class ReplayMemory(object):
 
@@ -57,14 +67,16 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-LR_ddqn = ddqn_params['learning_rate']
-MOMENTUM = ddqn_params['momentum']
-GAMMA_ddqn = ddqn_params['gamma']
-ACCUMULATION_STEPS = ddqn_params['accumulation_steps']
-MIN_EPSILON = ddqn_params['min_epsilon']
-EPSILON = ddqn_params['epsilon']
-EPSILON_DISCOUNT_RATE = ddqn_params['epsilon_discount_rate']
-DISCOUNT_FACTOR = ddqn_params['discount_factor']
+
+LR_ddqn = ddqn_params["learning_rate"]
+MOMENTUM = ddqn_params["momentum"]
+GAMMA_ddqn = ddqn_params["gamma"]
+ACCUMULATION_STEPS = ddqn_params["accumulation_steps"]
+MIN_EPSILON = ddqn_params["min_epsilon"]
+EPSILON = ddqn_params["epsilon"]
+EPSILON_DISCOUNT_RATE = ddqn_params["epsilon_discount_rate"]
+DISCOUNT_FACTOR = ddqn_params["discount_factor"]
+
 
 class MacroAgent:
     """
@@ -116,9 +128,10 @@ class MacroAgent:
     load_model(step, path):
         Loads the Q-network and target network models from disk.
     """
+
     def __init__(
-        self, 
-        input_dim, 
+        self,
+        input_dim,
         action_space,
         batch_size,
     ):
@@ -129,14 +142,14 @@ class MacroAgent:
         self.build_network()
         self.batch_size = batch_size
         self.goal_done = False
-        
+
     def build_network(self):
         """
         Builds the Q-network and target network for the agent using the DDQNModel.
-        
+
         This method initializes the Q-network and target network with the given input dimensions
         and number of actions. It also sets up the optimizer for training the Q-network.
-        
+
         Attributes:
             Q_network (DDQNModel): The Q-network used for estimating Q-values.
             target_network (DDQNModel): The target network used for stabilizing training.
@@ -145,17 +158,17 @@ class MacroAgent:
         self.Q_network = DDQNModel(self.input_dim, self.action_number)
         self.target_network = DDQNModel(self.input_dim, self.action_number)
         self.optimizer = optim.Adam(self.Q_network.parameters(), lr=LR_ddqn)
-    
+
     def update_target_net(self):
         """
         Updates the target network by copying the state dictionary from the current Q-network.
-        
+
         This method is typically used in deep reinforcement learning to periodically synchronize
         the target network with the current Q-network, ensuring that the target network remains
         a stable reference for calculating target values during training.
         """
         self.target_network.load_state_dict(self.Q_network.state_dict())
-    
+
     def update_Q_network(self):
         """
         Updates the Q-network using a batch of transitions sampled from memory.
@@ -173,51 +186,58 @@ class MacroAgent:
         11. Computes the Q-values for the current states and actions.
         12. Calculates the mean squared error loss between the computed Q-values and the target values.
         13. Performs backpropagation and updates the Q-network's weights using the optimizer.
-        
+
         Returns:
             torch.Tensor: The loss value after the update.
         """
-                
+
         if len(self.memory) < self.batch_size:
             return
         transitions = self.memory.sample(self.batch_size)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
         # detailed explanation). This converts batch-array of Transitions
         # to Transition of batch-arrays.
-        batch = Transition(*zip(*transitions))        
+        batch = Transition(*zip(*transitions))
         state_batch = torch.cat(batch.state)
         next_state_batch = torch.cat(batch.next_state)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
         over_batch = torch.cat(batch.over)
-        
+
         self.Q_network.eval()
         self.target_network.eval()
-        
+
         # use current network to evaluate action argmax_a' Q_current(s', a')_
-        action_new = self.Q_network.forward(next_state_batch).max(dim=1)[1].cpu().data.view(-1, 1)
+        action_new = (
+            self.Q_network.forward(next_state_batch)
+            .max(dim=1)[1]
+            .cpu()
+            .data.view(-1, 1)
+        )
         action_new_onehot = torch.zeros(self.batch_size, self.action_number)
         action_new_onehot = Variable(action_new_onehot.scatter_(1, action_new, 1.0))
-        
+
         #### use target network to evaluate value y = r + discount_factor * Q_tar(s', a')
-        
+
         next_q_values = self.target_network.forward(next_state_batch)
         masked_q_values = (next_q_values * action_new_onehot).sum(dim=1)
         # Ensure over_batch is broadcastable with masked_q_values
         discounted_q_values = masked_q_values * over_batch
         # Calculate the final target values
-        y = (reward_batch + discounted_q_values * DISCOUNT_FACTOR).float() # to force float32 instead of double
-        
+        y = (
+            reward_batch + discounted_q_values * DISCOUNT_FACTOR
+        ).float()  # to force float32 instead of double
+
         # regression Q(s, a) -> y
         self.Q_network.train()
-        Q = (self.Q_network.forward(state_batch)*action_batch.unsqueeze(1)).sum(dim=1)
+        Q = (self.Q_network.forward(state_batch) * action_batch.unsqueeze(1)).sum(dim=1)
         loss = mse_loss(input=Q, target=y.detach())
-        
+
         # backward optimize
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
+
         return loss.data
 
     def select_strategy(self, state):
@@ -238,13 +258,13 @@ class MacroAgent:
                 return estimate[1].data[:1]
         else:
             return torch.tensor([np.random.randint(0, self.Q_network.fc2.out_features)])
-    
+
     def update_epsilon(self):
         """
         Update the epsilon value by decrementing it with a predefined discount rate.
-        
-        This method reduces the epsilon value by a constant rate (EPSILON_DISCOUNT_RATE) 
-        until it reaches a minimum threshold (MIN_EPSILON). Epsilon is typically used 
+
+        This method reduces the epsilon value by a constant rate (EPSILON_DISCOUNT_RATE)
+        until it reaches a minimum threshold (MIN_EPSILON). Epsilon is typically used
         in reinforcement learning algorithms to balance exploration and exploitation.
 
         Attributes:
@@ -254,7 +274,7 @@ class MacroAgent:
         """
         if self.epsilon > MIN_EPSILON:
             self.epsilon -= EPSILON_DISCOUNT_RATE
-    
+
     def stop_epsilon(self):
         """
         Temporarily stops the exploration by setting epsilon to 0.
@@ -263,16 +283,16 @@ class MacroAgent:
         (epsilon_tmp) and then sets epsilon to 0. This can be used to stop
         exploration during certain phases of training or evaluation.
         """
-        self.epsilon_tmp = self.epsilon        
-        self.epsilon = 0        
-    
+        self.epsilon_tmp = self.epsilon
+        self.epsilon = 0
+
     def restore_epsilon(self):
         """
         Restores the epsilon value to its temporary stored value.
 
         This method sets the epsilon attribute back to the value stored in epsilon_tmp.
         """
-        self.epsilon = self.epsilon_tmp 
+        self.epsilon = self.epsilon_tmp
 
     def set_training_mode(self):
         """
@@ -297,17 +317,17 @@ class MacroAgent:
         self.Q_network.eval()
         self.target_network.eval()
         self.stop_epsilon()
-        
+
     def set_pretrained_mode(self, freeze_layers):
         """
         Adjusts the model to operate in pretrained mode.
 
-        If `freeze_layers` is True, the fully connected layers of both the Q_network 
-        and the target_network are frozen to prevent further training. Additionally, 
+        If `freeze_layers` is True, the fully connected layers of both the Q_network
+        and the target_network are frozen to prevent further training. Additionally,
         the learning rate of the optimizer is reduced to one-tenth of its current value.
 
         Args:
-            freeze_layers (bool): A flag indicating whether to freeze the fully 
+            freeze_layers (bool): A flag indicating whether to freeze the fully
                                   connected layers of the networks.
 
         Prints:
@@ -316,11 +336,11 @@ class MacroAgent:
         if freeze_layers:
             self.Q_network.freeze_fc_layers()
             self.target_network.freeze_fc_layers()
-        new_learning_rate = self.optimizer.param_groups[0]['lr']/10
-        print(f'New learning rate for macro: {new_learning_rate}')
+        new_learning_rate = self.optimizer.param_groups[0]["lr"] / 10
+        print(f"New learning rate for macro: {new_learning_rate}")
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = new_learning_rate
-        
+            param_group["lr"] = new_learning_rate
+
     def save_model(self, step, path, map_name):
         """
         Saves the current state of the Q-network and target network to the specified path.
@@ -335,9 +355,13 @@ class MacroAgent:
         """
         path_to_model = f"{path}run_{step}/"
         make_dir(path_to_model)
-        self.Q_network.save(step, f"{path_to_model}high_Q_net.pt", self.optimizer, map_name)
-        self.target_network.save(step, f"{path_to_model}high_target_net.pt", self.optimizer, map_name)
-        
+        self.Q_network.save(
+            step, f"{path_to_model}high_Q_net.pt", self.optimizer, map_name
+        )
+        self.target_network.save(
+            step, f"{path_to_model}high_target_net.pt", self.optimizer, map_name
+        )
+
     def load_model(self, step, path):
         """
         Loads the model and target network from the specified path and step.
@@ -348,23 +372,29 @@ class MacroAgent:
             str: The name of the map loaded by the Q_network.
         """
         path_to_model = f"{path}run_{step}/"
-        
+
         map_name = self.Q_network.load(f"{path_to_model}high_Q_net.pt")
-        self.target_network.eval()      # Set to inference mode
-        
+        self.target_network.eval()  # Set to inference mode
+
         _ = self.target_network.load(f"{path_to_model}high_target_net.pt")
-        self.target_network.eval()      # Set to inference mode
+        self.target_network.eval()  # Set to inference mode
         return map_name
 
+
 #######################
-GAMMA_DQN = dqn_params['gamma']                     # Discount factor
-EPS_START = dqn_params['eps_start']                 # Starting value of epsilon
-EPS_END = dqn_params['eps_end']                     # Final value of epsilon
-EPS_DECAY = dqn_params['eps_decay']                 # Controls the rate of exponential decay of epsilon, higher means a slower decay
-TAU = dqn_params['tau']                             # Update rate of the target network
-LR_DQN = dqn_params['learning_rate']                # Learning rate of the ``AdamW`` optimizer
-AMSGRAD = dqn_params['amsgrad']                     # Amsgrad parameter of ``AdamW`` optimizer
-REPLAY__CAPACITY = dqn_params['replay_capacity']    # Replay buffer capacity to store previous steps
+GAMMA_DQN = dqn_params["gamma"]  # Discount factor
+EPS_START = dqn_params["eps_start"]  # Starting value of epsilon
+EPS_END = dqn_params["eps_end"]  # Final value of epsilon
+EPS_DECAY = dqn_params[
+    "eps_decay"
+]  # Controls the rate of exponential decay of epsilon, higher means a slower decay
+TAU = dqn_params["tau"]  # Update rate of the target network
+LR_DQN = dqn_params["learning_rate"]  # Learning rate of the ``AdamW`` optimizer
+AMSGRAD = dqn_params["amsgrad"]  # Amsgrad parameter of ``AdamW`` optimizer
+REPLAY__CAPACITY = dqn_params[
+    "replay_capacity"
+]  # Replay buffer capacity to store previous steps
+
 
 class MicroAgent:
     """
@@ -397,16 +427,19 @@ class MicroAgent:
         load_model(step, path):
             Loads the state of the policy and target networks from the specified path.
     """
+
     def __init__(self, input_dim, action_space, batch_size):
         self.policy_net = DQNModel(input_dim, action_space).to(device)
         self.target_net = DQNModel(input_dim, action_space).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR_DQN, amsgrad=AMSGRAD)
+        self.optimizer = optim.AdamW(
+            self.policy_net.parameters(), lr=LR_DQN, amsgrad=AMSGRAD
+        )
         self.memory = ReplayMemory(REPLAY__CAPACITY)
         self.batch_size = batch_size
         self.steps_done = 0
         self.eval_mode = False
-    
+
     def select_action(self, state, mask):
         """
         Selects an action based on the current state and action mask using an epsilon-greedy strategy.
@@ -421,8 +454,9 @@ class MicroAgent:
         sample = random.random()
         eps_threshold = 0
         if not self.eval_mode:
-            eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-                math.exp(-1. * self.steps_done / EPS_DECAY)
+            eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(
+                -1.0 * self.steps_done / EPS_DECAY
+            )
         self.steps_done += 1
         if sample > eps_threshold:
             with torch.no_grad():
@@ -435,7 +469,7 @@ class MicroAgent:
                 return masked_q_values.max(1).indices.view(1, 1)
         else:
             return np.random.choice(mask.nonzero().reshape(1, -1)[0])
-    
+
     def update(self):
         """
         Perform one step of the optimization on the policy network.
@@ -452,7 +486,7 @@ class MicroAgent:
         7. Compute the expected Q values.
         8. Compute the Huber loss between the predicted and expected Q values.
         9. Optimize the model by performing a backward pass and gradient clipping.
-        
+
         Returns:
             loss (torch.Tensor): The computed loss value.
         """
@@ -472,12 +506,15 @@ class MicroAgent:
 
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                            batch.next_state)), device=device, dtype=torch.bool)
+        non_final_mask = torch.tensor(
+            tuple(map(lambda s: s is not None, batch.next_state)),
+            device=device,
+            dtype=torch.bool,
+        )
         non_final_next_states = torch.cat(
             [s for s in batch.next_state if s is not None]
         ).reshape(reshape_size[0], reshape_size[1])
-        
+
         state_batch = torch.cat(batch.state).reshape(reshape_size[0], reshape_size[1])
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
@@ -494,7 +531,9 @@ class MicroAgent:
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(self.batch_size, device=device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1).values
+            next_state_values[non_final_mask] = (
+                self.target_net(non_final_next_states).max(1).values
+            )
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA_DQN) + reward_batch
 
@@ -514,12 +553,12 @@ class MicroAgent:
         """
         Perform a soft update of the target network's weights.
 
-        This method updates the weights of the target network (self.target_net) 
-        by blending them with the weights of the policy network (self.policy_net) 
+        This method updates the weights of the target network (self.target_net)
+        by blending them with the weights of the policy network (self.policy_net)
         using a factor τ (TAU). The update rule is:
-        
+
             θ' ← τ * θ + (1 − τ) * θ'
-        
+
         where:
         - θ' represents the weights of the target network.
         - θ represents the weights of the policy network.
@@ -532,7 +571,9 @@ class MicroAgent:
         target_net_state_dict = self.target_net.state_dict()
         policy_net_state_dict = self.policy_net.state_dict()
         for key in policy_net_state_dict:
-            target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net_state_dict[key] = policy_net_state_dict[
+                key
+            ] * TAU + target_net_state_dict[key] * (1 - TAU)
         self.target_net.load_state_dict(target_net_state_dict)
 
     def set_training_mode(self):
@@ -545,7 +586,7 @@ class MicroAgent:
         """
         self.policy_net.train()
         self.target_net.train()
-    
+
     def set_evaluation_mode(self):
         """
         Sets the policy and target networks to evaluation mode.
@@ -557,26 +598,26 @@ class MicroAgent:
         self.policy_net.eval()
         self.target_net.eval()
         self.eval_mode = True
-        
+
     def set_pretrained_mode(self, freeze_layers):
         """
         Adjusts the model to operate in pretrained mode.
 
-        If `freeze_layers` is True, it freezes the later layers of both the 
-        policy network and the target network. Additionally, it reduces the 
+        If `freeze_layers` is True, it freezes the later layers of both the
+        policy network and the target network. Additionally, it reduces the
         learning rate of the optimizer by a factor of 10.
 
         Args:
-            freeze_layers (bool): A flag indicating whether to freeze the later 
+            freeze_layers (bool): A flag indicating whether to freeze the later
                       layers of the networks.
         """
         if freeze_layers:
             self.policy_net.freeze_later_layers()
             self.target_net.freeze_later_layers()
-        new_learning_rate = self.optimizer.param_groups[0]['lr']/10
-        print(f'New learning rate for micro: {new_learning_rate}')
+        new_learning_rate = self.optimizer.param_groups[0]["lr"] / 10
+        print(f"New learning rate for micro: {new_learning_rate}")
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = new_learning_rate
+            param_group["lr"] = new_learning_rate
 
     def mask_actions(self, q_values, action_mask):
         """
@@ -607,7 +648,9 @@ class MicroAgent:
         path_to_model = f"{path}run_{step}/"
         make_dir(path_to_model)
         self.policy_net.save(step, f"{path_to_model}lower_Q_net.pt", self.optimizer)
-        self.target_net.save(step, f"{path_to_model}lower_target_net.pt", self.optimizer)
+        self.target_net.save(
+            step, f"{path_to_model}lower_target_net.pt", self.optimizer
+        )
 
     def load_model(self, step, path):
         """
@@ -620,7 +663,7 @@ class MicroAgent:
         """
         path_to_model = f"{path}run_{step}/"
         self.policy_net.load(f"{path_to_model}lower_Q_net.pt")
-        self.policy_net.eval()      # Set to inference mode
-        
+        self.policy_net.eval()  # Set to inference mode
+
         self.target_net.load(f"{path_to_model}lower_target_net.pt")
-        self.target_net.eval()      # Set to inference mode
+        self.target_net.eval()  # Set to inference mode

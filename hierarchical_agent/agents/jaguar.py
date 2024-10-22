@@ -11,6 +11,7 @@ _PLAYER_NEUTRAL = 3
 _PLAYER_ENEMY = 4
 _COMMAND_CENTER = units.Terran.CommandCenter
 
+
 class Grid:
     """
     A class to represent a Grid.
@@ -25,17 +26,19 @@ class Grid:
     Methods:
         __repr__(): Returns a string representation of the Grid object.
     """
+
     def __init__(self, zone, x_min, y_min, x_max, y_max):
         self.zone = zone
         self.x_min = x_min
         self.y_min = y_min
         self.x_max = x_max
         self.y_max = y_max
-        self.x = (x_max+x_min)//2
-        self.y = (y_max+y_min)//2
-        
+        self.x = (x_max + x_min) // 2
+        self.y = (y_max + y_min) // 2
+
     def __repr__(self) -> str:
         return f"Zone {self.zone}\nX: {self.x}\nY: {self.y}"
+
 
 class Jaguar:
     """
@@ -64,6 +67,7 @@ class Jaguar:
         lower_policy (MicroAgent): Micro agent policy.
         map_name (str): Name of the current map.
     """
+
     def __init__(
         self,
         mid_input_dim,
@@ -81,19 +85,25 @@ class Jaguar:
         self.current_micro_action = None
         self.last_action = None
         self.max_actions_queue = 5
-        self._set_grid(screen_size)     # Define grid to map the feature screen
+        self._set_grid(screen_size)  # Define grid to map the feature screen
 
         self.strategies = self._define_map_strategies(maps, current_map)
         self.alliances = self._define_map_alliances(maps, current_map)
         self.action_space = self._get_action_space()
-        
+
         self.strategy_space_size = self._get_action_space_size(self.strategies)
-        self.lower_action_space_size = self._get_action_space_size(self.strategies, level=1)
-        
+        self.lower_action_space_size = self._get_action_space_size(
+            self.strategies, level=1
+        )
+
         # Policies
-        self.upper_policy = MacroAgent(mid_input_dim, self.strategy_space_size, batch_size)
-        self.lower_policy = MicroAgent(lower_input_dim, self.lower_action_space_size, batch_size)
-        
+        self.upper_policy = MacroAgent(
+            mid_input_dim, self.strategy_space_size, batch_size
+        )
+        self.lower_policy = MicroAgent(
+            lower_input_dim, self.lower_action_space_size, batch_size
+        )
+
         self.map_name = current_map
 
     @staticmethod
@@ -108,13 +118,13 @@ class Jaguar:
         Returns:
             list: A list of strategies that are applicable to the current map.
         """
-        strategy_cat = maps_list[current_map]['strategies']
+        strategy_cat = maps_list[current_map]["strategies"]
         strategies = []
         for strategy in avail_actions.STRATEGIES:
             if strategy.category in strategy_cat:
                 strategies.append(strategy)
         return strategies
-    
+
     @staticmethod
     def _define_map_alliances(maps_list: List, current_map: str) -> List[int]:
         """
@@ -127,24 +137,24 @@ class Jaguar:
         Returns:
             list: A list of alliances for the current map, where each alliance is represented by a constant.
         """
-        map_alliaces = maps_list[current_map]['alliances']
+        map_alliaces = maps_list[current_map]["alliances"]
         alliances = []
         alliances_dict = {
-            'self': _PLAYER_SELF,
-            'ally': _PLAYER_ALLY,
-            'neutral': _PLAYER_NEUTRAL,
-            'enemy': _PLAYER_ENEMY,
+            "self": _PLAYER_SELF,
+            "ally": _PLAYER_ALLY,
+            "neutral": _PLAYER_NEUTRAL,
+            "enemy": _PLAYER_ENEMY,
         }
         for alliance in map_alliaces:
             alliances.append(alliances_dict[alliance])
         return alliances
-                
+
     def _get_action_space(self) -> np.ndarray:
         """
         Generates the action space for the agent by aggregating micro actions from all strategies.
 
-        This method iterates through each strategy in the agent's strategies list, collects all 
-        micro actions, removes duplicates, sorts them, and returns the resulting action space 
+        This method iterates through each strategy in the agent's strategies list, collects all
+        micro actions, removes duplicates, sorts them, and returns the resulting action space
         as a numpy array.
 
         Returns:
@@ -154,7 +164,7 @@ class Jaguar:
         for strategy in self.strategies:
             action_space += strategy.micro_actions
         return np.array(sorted(set(action_space)))
-    
+
     def _get_action_space_size(self, space, level=0) -> int:
         """
         Calculate the size of the action space.
@@ -174,7 +184,7 @@ class Jaguar:
             for strategy in self.strategies:
                 action_space += strategy.micro_actions
             return len(set(action_space))
-            
+
     def _actions_in_queue(self, feature_units) -> bool:
         """
         Checks if any unit in the feature_units list has fewer actions in its queue than the maximum allowed.
@@ -186,9 +196,9 @@ class Jaguar:
             bool: True if any unit belonging to the player has fewer actions in its queue than the maximum allowed, False otherwise.
         """
         for unit in feature_units:
-            if unit['alliance'] == _PLAYER_SELF:
-                return unit['order_length'] < self.max_actions_queue
-    
+            if unit["alliance"] == _PLAYER_SELF:
+                return unit["order_length"] < self.max_actions_queue
+
     def choose_mid_strategy(self, state):
         """
         Selects a mid-level strategy based on the given state.
@@ -220,57 +230,69 @@ class Jaguar:
             A tuple containing the executed action function and the action index,
             or (actions.FUNCTIONS.no_op(), 0) if no action is applicable.
         """
-        self.last_action = self.current_micro_action if self.current_micro_action != avail_actions._NO_OP else self.last_action
-        
+        self.last_action = (
+            self.current_micro_action
+            if self.current_micro_action != avail_actions._NO_OP
+            else self.last_action
+        )
+
         # INITIALIZE MAP WITH SELECTED COMMAND CENTER
-        if self.map_name == 'BuildMarines' and self.last_action is None:
+        if self.map_name == "BuildMarines" and self.last_action is None:
             action = avail_actions._SELECT_POINT
             point = self.find_point(feature_units)
             self.current_micro_action = action
-            return action('select', point), avail_actions.ACTIONS.index(action)
-        
+            return action("select", point), avail_actions.ACTIONS.index(action)
+
         action_index = self.lower_policy.select_action(state, self.action_mask)
         action = self.map_action(action_index)
-        
+
         # Initialize the current action as no_op
         self.current_micro_action = actions.FUNCTIONS.no_op
-        
-        if not self._is_action_available(action.id, available_actions) or not self._is_action_available(avail_actions.ACTIONS.index(action), self.upper_policy.strategy_actions) or not self._is_in_action_list(action.id):
+
+        if (
+            not self._is_action_available(action.id, available_actions)
+            or not self._is_action_available(
+                avail_actions.ACTIONS.index(action), self.upper_policy.strategy_actions
+            )
+            or not self._is_in_action_list(action.id)
+        ):
             return actions.FUNCTIONS.no_op(), 0  # Early return for unavailable actions
-        
-        if action == avail_actions._SELECT_ARMY:     
-            self.current_micro_action = action       
-            return action('select'), action_index
-        
-        if action == avail_actions._SELECT_UNIT:     
+
+        if action == avail_actions._SELECT_ARMY:
             self.current_micro_action = action
-            unit_index = self.find_unit(feature_units)    
-            return action('select', unit_index), action_index
-                
+            return action("select"), action_index
+
+        if action == avail_actions._SELECT_UNIT:
+            self.current_micro_action = action
+            unit_index = self.find_unit(feature_units)
+            return action("select", unit_index), action_index
+
         if action == avail_actions._SELECT_POINT:
             point = self.find_point(feature_units)
             if point is None:
                 return actions.FUNCTIONS.no_op(), 0
-            self.current_micro_action = action  
-            return action('select', point), action_index
+            self.current_micro_action = action
+            return action("select", point), action_index
 
         if action == avail_actions._ATTACK_SCREEN:
             attack_action = self.attack(action, feature_units)
-            
+
             # Check if there is an enemy or if coordinates are within screen range
             if attack_action is None or min(attack_action.arguments[1]) < 0:
                 return actions.FUNCTIONS.no_op(), 0
             self.current_micro_action = action
             return attack_action, action_index
-        
-        if action.id == avail_actions._MOVE_SCREEN.id and (self.last_action != avail_actions._ATTACK_SCREEN or 
-                                                           self.current_strategy == avail_actions.retreat.id):
-                if self._actions_in_queue(feature_units):
-                    self.current_micro_action = action
-                    return self.move_to_position(action), action_index
+
+        if action.id == avail_actions._MOVE_SCREEN.id and (
+            self.last_action != avail_actions._ATTACK_SCREEN
+            or self.current_strategy == avail_actions.retreat.id
+        ):
+            if self._actions_in_queue(feature_units):
+                self.current_micro_action = action
+                return self.move_to_position(action), action_index
 
         return actions.FUNCTIONS.no_op(), 0  # No other matching actions, return no-op
-        
+
     def set_mask(self) -> torch.Tensor:
         """
         Creates a mask for available actions based on the upper policy's strategy actions.
@@ -282,10 +304,12 @@ class Jaguar:
             torch.Tensor: A tensor representing the action mask, where available actions are marked with 1.
         """
         action_mask = torch.zeros(self.lower_action_space_size)
-        available_actions_index = np.nonzero(np.isin(self.action_space, self.upper_policy.strategy_actions))[0]
+        available_actions_index = np.nonzero(
+            np.isin(self.action_space, self.upper_policy.strategy_actions)
+        )[0]
         action_mask[available_actions_index] = 1
         return action_mask
-    
+
     def map_action(self, action_index):
         """
         Maps an action index to its corresponding action.
@@ -297,7 +321,7 @@ class Jaguar:
             The action corresponding to the given action index.
         """
         return avail_actions.ACTIONS[self.action_space[action_index]]
-    
+
     def find_command_center(self, feature_units) -> Tuple[int, int]:
         """
         Finds the coordinates of the command center from a list of feature units.
@@ -311,7 +335,7 @@ class Jaguar:
         for unit in feature_units:
             if unit.unit_type == _COMMAND_CENTER:
                 return (unit.x, unit.y)
-    
+
     def find_point(self, feature_units):
         """
         Determines the point of interest based on the current map name.
@@ -323,9 +347,9 @@ class Jaguar:
             The point of interest based on the map name. If the map name is 'BuildMarines',
             it returns the result of the `find_command_center` method.
         """
-        if self.map_name == 'BuildMarines':
+        if self.map_name == "BuildMarines":
             return self.find_command_center(feature_units)
-    
+
     def find_unit(self, feature_units) -> int:
         """
         Selects a random unit from the player's units.
@@ -338,7 +362,7 @@ class Jaguar:
         """
         player_units = self.get_player_units(feature_units)
         return np.random.randint(0, len(player_units))
-    
+
     def count_current_enemies(self, feature_units) -> int:
         """
         Counts the number of enemy units in the given feature units.
@@ -352,10 +376,10 @@ class Jaguar:
         """
         count_enemy = 0
         for unit in feature_units:
-            if unit['alliance'] == _PLAYER_ENEMY:
+            if unit["alliance"] == _PLAYER_ENEMY:
                 count_enemy += 1
         return count_enemy
-    
+
     def set_num_enemies(self, feature_units):
         """
         Sets the number of enemies based on the provided feature units.
@@ -364,7 +388,7 @@ class Jaguar:
             feature_units (list): A list of feature units from which the number of enemies will be counted.
         """
         self.num_enemies = self.count_current_enemies(feature_units)
-    
+
     def check_win(self, feature_units=None, units_defeated=None) -> bool:
         """
         Determines if the win condition has been met.
@@ -380,13 +404,15 @@ class Jaguar:
             bool: True if the win condition is met, False otherwise.
         """
         # For FindAndDefeatZerglings map only
-        if self.map_name == 'FindAndDefeatZerglings':
+        if self.map_name == "FindAndDefeatZerglings":
             return units_defeated >= 25
         # For other maps
         current_enemies = self.count_current_enemies(feature_units)
         return current_enemies > self.num_enemies
 
-    def train_upper_policy(self, state, strategy, next_state, rewards, terminal) -> float:
+    def train_upper_policy(
+        self, state, strategy, next_state, rewards, terminal
+    ) -> float:
         """
         Trains the upper policy network using the provided state, strategy, next state, rewards, and terminal flag.
 
@@ -433,27 +459,31 @@ class Jaguar:
             lower (bool): A flag indicating whether to update the lower policy's memory or the upper policy's memory.
         """
         if lower:
-            self.lower_policy.memory.push(state.unsqueeze(0), action, next_state.unsqueeze(0), reward, terminal)
+            self.lower_policy.memory.push(
+                state.unsqueeze(0), action, next_state.unsqueeze(0), reward, terminal
+            )
         else:
-            self.upper_policy.memory.push(state.unsqueeze(0), action, next_state.unsqueeze(0), reward, terminal)
+            self.upper_policy.memory.push(
+                state.unsqueeze(0), action, next_state.unsqueeze(0), reward, terminal
+            )
 
     def update_lower_target_net(self):
         """
         Updates the target network of the lower-level policy.
 
-        This method calls the `update_target_net` function of the `lower_policy` 
-        to synchronize the target network with the current policy network. This 
-        is typically done to stabilize training in reinforcement learning by 
-        periodically updating the target network with the weights of the current 
+        This method calls the `update_target_net` function of the `lower_policy`
+        to synchronize the target network with the current policy network. This
+        is typically done to stabilize training in reinforcement learning by
+        periodically updating the target network with the weights of the current
         policy network.
         """
         self.lower_policy.update_target_net()
-            
+
     def update_upper_target_net(self):
         """
         Updates the target network of the upper policy.
 
-        This method calls the `update_target_net` method of the `upper_policy` 
+        This method calls the `update_target_net` method of the `upper_policy`
         to synchronize the target network with the current policy network.
         """
         self.upper_policy.update_target_net()
@@ -472,11 +502,13 @@ class Jaguar:
         3. Creates a dictionary mapping each zone name to a Grid object, which defines the boundaries of each zone.
         """
         # Define the size of the world map
-        zone_size = screen_size // self.grid_resize_factor  # Divide m x m map into n x n zones
+        zone_size = (
+            screen_size // self.grid_resize_factor
+        )  # Divide m x m map into n x n zones
 
         # Define the zones names
         self.zones = [
-            chr(i) for i in range(ord('A'), ord('A') + self.grid_resize_factor**2)
+            chr(i) for i in range(ord("A"), ord("A") + self.grid_resize_factor**2)
         ]
         # Map the zones
         index = 0
@@ -493,7 +525,7 @@ class Jaguar:
                     (j + 1) * zone_size,
                 )
         self.grid = zones_obj
-        
+
     def action_available(self, action, available_actions_list):
         """
         Determines if a given action is available based on a list of available actions.
@@ -506,10 +538,10 @@ class Jaguar:
         for available_actions in available_actions_list:
             if not self._is_action_available(action, available_actions):
                 return False
-        
+
         # If the action is in available lists, check if it is in the actions list
         return self._is_in_action_list(action.id)
-                    
+
     def get_player_units(self, feature_units):
         """
         Filters and returns the units that belong to the player.
@@ -522,7 +554,7 @@ class Jaguar:
         """
         player_units = [unit for unit in feature_units if unit.alliance == _PLAYER_SELF]
         return player_units
-    
+
     def is_army_attacking(self, feature_units):
         """
         Determines if any player unit is currently attacking.
@@ -541,7 +573,7 @@ class Jaguar:
             if unit.order_length > 0 and unit.weapon_cooldown > 0:
                 return True
         return False
-        
+
     def update_health(self, feature_units):
         """
         Updates the health information of the player's units.
@@ -553,8 +585,8 @@ class Jaguar:
             self.prev_health (dict): A dictionary mapping unit tags to their health values.
         """
         units = self.get_player_units(feature_units)
-        self.prev_health = {unit.tag: unit.health for unit in units}    
-    
+        self.prev_health = {unit.tag: unit.health for unit in units}
+
     def is_taking_damage(self, feature_units):
         """
         Determines if any player unit is currently taking damage.
@@ -570,7 +602,7 @@ class Jaguar:
             if unit.tag in self.prev_health:
                 return unit.health < self.prev_health[unit.tag]
         return False
-                
+
     def find_target(self, feature_units):
         """
         Finds the first enemy unit on the screen from a list of feature units.
@@ -587,7 +619,7 @@ class Jaguar:
             if unit.alliance == _PLAYER_ENEMY:
                 return (unit.x, unit.y)
         return None
-                
+
     def move_to_position(self, action):
         """
         Moves the agent to a specified position on the screen based on the given action.
@@ -598,10 +630,10 @@ class Jaguar:
         Returns:
             FunctionCall: A FunctionCall object that represents the move action to the specified screen coordinates.
         """
-        zone = action.action_name[-1]   # Get the zone ID
+        zone = action.action_name[-1]  # Get the zone ID
         zone_to_move = self.grid[zone]
         x, y = (zone_to_move.x, zone_to_move.y)
-        return actions.FUNCTIONS.Move_screen('queued', (x, y))
+        return actions.FUNCTIONS.Move_screen("queued", (x, y))
 
     def attack(self, action, feature_units):
         """
@@ -618,7 +650,7 @@ class Jaguar:
         """
         target_coor = self.find_target(feature_units)
         if target_coor is not None:
-            return action('now', target_coor)
+            return action("now", target_coor)
         return None
 
     def map_strategy_actions(self, id):
@@ -654,7 +686,7 @@ class Jaguar:
         """
         self.upper_policy.set_training_mode()
         self.lower_policy.set_training_mode()
-        
+
     def eval_mode(self):
         """
         Sets the upper and lower policies to evaluation mode.
@@ -665,18 +697,18 @@ class Jaguar:
         self.upper_policy.set_evaluation_mode()
         self.lower_policy.set_evaluation_mode()
         print("**** Set to evaluation mode: ON ****")
-    
+
     def enable_pretrained_mode(self, freeze_layers):
         """
         Enables the pretrained mode for both upper and lower policies.
 
         Args:
-            freeze_layers (bool): If True, the layers of the policies will be frozen, 
+            freeze_layers (bool): If True, the layers of the policies will be frozen,
                                   meaning they will not be updated during training.
         """
         self.upper_policy.set_pretrained_mode(freeze_layers)
         self.lower_policy.set_pretrained_mode(freeze_layers)
-    
+
     def save(self, step, path):
         """
         Save the current state of the agent's policies.
@@ -698,8 +730,8 @@ class Jaguar:
             self.lower_policy.save_model(step, path)
             print("MODEL SAVED SUCCESSFULLY")
         except Exception as e:
-            raise Exception(f'Could not save agent due to {e}')
-    
+            raise Exception(f"Could not save agent due to {e}")
+
     def load(self, step, path):
         """
         Loads the agent's policies from the specified path at a given step.
@@ -717,10 +749,10 @@ class Jaguar:
         try:
             map_name = self.upper_policy.load_model(step, path)
             _ = self.lower_policy.load_model(step, path)
-            print('Agent loaded successfully')
+            print("Agent loaded successfully")
             return map_name
         except Exception as e:
-            raise Exception(f'Could not load agent due to {e}')
+            raise Exception(f"Could not load agent due to {e}")
 
     @staticmethod
     def map_strategy_ids(strategies) -> List[int]:
