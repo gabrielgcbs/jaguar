@@ -93,4 +93,21 @@ This project is licensed under the GNU GPLv3 License. See the LICENSE file for m
 ## Citing
 If you use Jaguar in your research, please cite:
 
-> CITATION NOT YET AVAILABLE...
+```bibtex
+@mastersthesis{Jaguar,
+  address={Natal, RN, Brazil},
+  title={Jaguar: a Hierarchical Deep Reinforcement Learning Approach with Transfer Learning for StarCraft II},
+  url={https://repositorio.ufrn.br/handle/123456789/63424},
+  author={Gabriel Caldas Barros e Sá},
+  year={2024},
+  month={December},
+  school={Universidade Federal do Rio Grande do Norte \(UFRN\)},
+  type={Master's thesis}
+}
+```
+
+---
+
+You can read the thesis [here](https://repositorio.ufrn.br/handle/123456789/63424).
+
+---
